@@ -27,7 +27,6 @@
     <string name="share_note_title">Shared from %s</string>
     <string name="login_settings_header">Login Settings</string>
     <string name="note_settings_header">Note Settings</string>
-    <string name="label_preview_template">#%s</string>
     <string name="logged_in_successfully">Login credentials are saved! ✅</string>
     <string name="send_fab_content_desc">Send.</string>
     <string name="trilium_sender_settings">Trilium Sender Settings</string>
