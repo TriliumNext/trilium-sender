@@ -64,12 +64,10 @@ class LoginActivity : AppCompatActivity() {
     private fun attemptLogin() {
         // Reset errors.
         triliumAddressEditText.error = null
-        usernameEditText.error = null
         passwordEditText.error = null
 
         // Store values at the time of the login attempt.
         val triliumAddress = triliumAddressEditText.text.toString()
-        val username = usernameEditText.text.toString()
         val password = passwordEditText.text.toString()
         val noteLabel = labelEditText.text.toString()
 
@@ -90,13 +88,6 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        // Check for an empty username. Flag and abort if so.
-        if (TextUtils.isEmpty(username)) {
-            usernameEditText.error = getString(R.string.error_field_required)
-            usernameEditText.requestFocus()
-            return
-        }
-
         // Check for an empty password. Flag and abort if so.
         if (TextUtils.isEmpty(password)) {
             passwordEditText.error = getString(R.string.error_field_required)
@@ -109,7 +100,7 @@ class LoginActivity : AppCompatActivity() {
         val uiScope = CoroutineScope(Dispatchers.Main)
         uiScope.launch {
 
-            val loginResult = doLogin(triliumAddress, username, password)
+            val loginResult = doLogin(triliumAddress, password)
 
             if (loginResult.success) {
                 // Store the address and api token.
@@ -150,13 +141,12 @@ class LoginActivity : AppCompatActivity() {
      *
      * @return A loginResult object.
      */
-    private suspend fun doLogin(triliumAddress: String, username: String, password: String): LoginResult {
+    private suspend fun doLogin(triliumAddress: String, password: String): LoginResult {
         return withContext(Dispatchers.IO) {
             val tag = "UserLoginCoroutine"
             val client = OkHttpClient()
 
             val json = JSONObject()
-            json.put("username", username)
             json.put("password", password)
 
             val body = json.toString().toRequestBody(Utils.JSON)

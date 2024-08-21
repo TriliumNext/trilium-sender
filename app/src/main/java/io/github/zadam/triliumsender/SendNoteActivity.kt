@@ -32,13 +32,15 @@ class SendNoteActivity : AppCompatActivity() {
         val settings = TriliumSettings(this)
         if (!settings.isConfigured()) {
             // We can't do anything useful if we're not configured. Abort out.
-            Toast.makeText(this, getString(R.string.sender_not_configured_note), Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.sender_not_configured_note), Toast.LENGTH_LONG)
+                .show()
             finish()
             return
         }
         if (settings.noteLabel.isNotEmpty()) {
             // We have a label to apply to this note! Indicate in the UI.
-            labelList.text = getString(R.string.label_preview_template, settings.noteLabel)
+            labelList.text = settings.noteLabel.split(" ").joinToString(" ") { "#$it" }
+
         } else {
             // Hide the label text preview.
             labelList.visibility = View.GONE
@@ -61,15 +63,28 @@ class SendNoteActivity : AppCompatActivity() {
             // Since we want to be able to fire Toasts, we should use the Main (UI) scope.
             val uiScope = CoroutineScope(Dispatchers.Main)
             uiScope.launch {
-                val success = sendNote(noteTitleEditText.text.toString(), noteContentEditText.text.toString(), settings.triliumAddress, settings.apiToken)
+                val success = sendNote(
+                    noteTitleEditText.text.toString(),
+                    noteContentEditText.text.toString(),
+                    settings.triliumAddress,
+                    settings.apiToken
+                )
                 if (success) {
                     // Announce our success and end the activity.
-                    Toast.makeText(this@SendNoteActivity, getString(R.string.sending_note_complete), Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@SendNoteActivity,
+                        getString(R.string.sending_note_complete),
+                        Toast.LENGTH_LONG
+                    ).show()
                     finish()
                 } else {
                     // Announce our failure.
                     // Do not end the activity, so the user may decide to copy/store their note's contents without it disappearing.
-                    Toast.makeText(this@SendNoteActivity, getString(R.string.sending_note_failed), Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@SendNoteActivity,
+                        getString(R.string.sending_note_failed),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -99,8 +114,10 @@ class SendNoteActivity : AppCompatActivity() {
                     // Which we can use to get an AppInfo handle...
                     try {
                         // Which we can use to get an app label!
-                        val referrerInfo = packageManager.getApplicationInfo(referrer.host.toString(), 0)
-                        val potentialReferrerName = referrerInfo.loadLabel(packageManager).toString()
+                        val referrerInfo =
+                            packageManager.getApplicationInfo(referrer.host.toString(), 0)
+                        val potentialReferrerName =
+                            referrerInfo.loadLabel(packageManager).toString()
                         // Sanity check: is it an empty string?
                         if (potentialReferrerName.isNotEmpty()) {
                             referrerName = potentialReferrerName
@@ -112,10 +129,54 @@ class SendNoteActivity : AppCompatActivity() {
                 }
             }
             // Ultimately, set the note title.
-            noteTitleEditText.setText(getString(R.string.share_note_title, referrerName), TextView.BufferType.EDITABLE)
+            noteTitleEditText.setText(
+                getString(R.string.share_note_title, referrerName),
+                TextView.BufferType.EDITABLE
+            )
         }
         // And populate the note body!
-        noteContentEditText.setText(intent.getStringExtra(Intent.EXTRA_TEXT), TextView.BufferType.EDITABLE)
+        noteContentEditText.setText(
+            intent.getStringExtra(Intent.EXTRA_TEXT),
+            TextView.BufferType.EDITABLE
+        )
+    }
+
+    /**
+     * Extracts hashtags from a string.
+     * Includes both single and double hashtags.
+     * Single hashtags will be kept inplace, while double hashtags will be removed.
+     * Note: written with the help of ChatGPT
+     *
+     * @param text, the string to extract hashtags from.
+     *
+     * @return A list of hashtags, as strings.
+     */
+    private fun extractHashtags(text: String): List<String> {
+        // Regex to find words starting with exactly one '#'
+        val singleRegex = Regex("""(?<!#)#([\w-]+)(?!#)""")
+        // Regex to find words starting with exactly two '##'
+        val doubleRegex = Regex("""(?<!#)##([\w-]+)(?!#)""")
+
+        // Extract single hashtags
+        val singleHashtags = singleRegex.findAll(text).map { it.groupValues[1] }.toList()
+        // Extract double hashtags
+        val doubleHashtags = doubleRegex.findAll(text).map { it.groupValues[1] }.toList()
+
+        return singleHashtags.plus(doubleHashtags)
+
+    }
+
+    /**
+     * Removes double hashtags from a string.
+     * Note: written with the help of ChatGPT
+     * @param text, the string to remove double hashtags from.
+     *
+     * @return The string with double hashtags removed.
+     */
+    private fun removeDoubleHashtags(text: String): String {
+        // Regex to remove words starting with exactly two '#'
+        val cleanedText = text.replace(Regex("""(?<!#)##[\w-]+(?!#)"""), "")
+        return cleanedText
     }
 
 
@@ -131,7 +192,12 @@ class SendNoteActivity : AppCompatActivity() {
      *
      * @return Success or failure, as a boolean.
      */
-    private suspend fun sendNote(noteTitle: String, noteText: String, triliumAddress: String, apiToken: String): Boolean {
+    private suspend fun sendNote(
+        noteTitle: String,
+        noteText: String,
+        triliumAddress: String,
+        apiToken: String
+    ): Boolean {
         val tag = "SendNoteCoroutine"
         val settings = TriliumSettings(this)
 
@@ -140,32 +206,60 @@ class SendNoteActivity : AppCompatActivity() {
 
             val json = JSONObject()
 
+            val labelList = JSONArray()
+            val label0 = JSONObject()
+            //Forcing the first label to be fromAndroid
+            label0.put("name", "fromAndroid")
+            label0.put("value", "")
+            labelList.put(label0)
+
             if (noteTitle.isEmpty()) {
                 // API does not allow empty note titles, so use a default value if the user doesn't set one.
                 json.put("title", "Note from Android")
             } else {
-                json.put("title", noteTitle)
+                //Processing hashtags from note's title
+                val hashtags = extractHashtags(noteTitle)
+                hashtags.forEach {
+                    val label = JSONObject()
+                    label.put("name", it)
+                    label.put("value", "")
+                    labelList.put(label)
+                }
+
+                val newTitle= removeDoubleHashtags(noteTitle)
+                json.put("title", newTitle)
             }
             json.put("content", HtmlConverter().convertPlainTextToHtml(noteText))
 
+
             if (settings.noteLabel.isNotEmpty()) {
-                // The api actually supports a list of key-value pairs, but for now we just write one label.
-                val label = JSONObject()
-                label.put("name", settings.noteLabel)
-                label.put("value", "")
-                val labelList = JSONArray()
-                labelList.put(label)
-                json.put("labels", labelList)
+                //Parsing the labels from settings
+                val tagsFromSettings = settings.noteLabel.split(" ")
+                tagsFromSettings.forEach {
+                    val label = JSONObject()
+                    label.put("name", it)
+                    label.put("value", "")
+                    labelList.put(label)
+                }
             }
+
+            json.put("labels", labelList)
+
+//            val relationList= JSONArray()
+//            val relation0 = JSONObject()
+//            relation0.put("name", "runOnNoteCreation")
+//            relation0.put("value", "")
+//            relationList.put(relation0)
+//            json.put("relations", relationList)
 
             val body = json.toString().toRequestBody(Utils.JSON)
 
             val request = Request.Builder()
-                    .url("$triliumAddress/api/sender/note")
-                    .addHeader("Authorization", apiToken)
-                    .addHeader("X-Local-Date", Utils.localDateStr())
-                    .post(body)
-                    .build()
+                .url("$triliumAddress/api/sender/note")
+                .addHeader("Authorization", apiToken)
+                .addHeader("X-Local-Date", Utils.localDateStr())
+                .post(body)
+                .build()
 
             return@withContext try {
                 // In the Dispatchers.IO context, blocking http requests are allowed.
